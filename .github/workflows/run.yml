@@ -1,0 +1,57 @@
+name: NSE Pre-Open Market Bot
+
+on:
+  schedule:
+    - cron: '30 4 * * 1-5' # Runs at 10:00 AM IST
+  
+  workflow_dispatch:
+
+jobs:
+  run-and-commit-data:
+    runs-on: ubuntu-latest
+    
+    permissions:
+      contents: write
+
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      
+      - name: Run the NSE data downloader
+        id: run_script
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+        run: python main.py
+
+      - name: Commit and push if data was generated
+        if: success()
+        run: |
+          # Configure git with a bot user
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          
+          # staging the new csv file
+          git add Data/*.csv
+          
+          # Check if there are any changes to commit. If not, Exiting.
+          # This prevents empty commits on weekends or holidays.
+          if git diff --quiet --exit-code --cached; then
+            echo "No new data to commit. Exiting."
+            exit 0
+          fi
+          
+          # Commit the new data file with today's date in the message
+          git commit -m "chore: Add pre-market data for $(date -u +'%Y-%m-%d')"
+          
+          # Push the commit to the main branch
+          git push
